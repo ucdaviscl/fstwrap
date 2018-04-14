@@ -28,7 +28,7 @@ with open(sys.argv[1], 'r') as fp:
             if t in fd:
                 fd[t] += 1
             else:
-                fd[t] = 0
+                fd[t] = 1
 
 # Remove words that appeared fewer than five times
 unks = [word for word, count in fd.items() if count < min_count]
