@@ -1,5 +1,6 @@
 # A simple wrapper for the OpenFST python wrapper.
 
+import pickle
 import pywrapfst as openfst
 
 class fst:
@@ -109,11 +110,60 @@ class fst:
 
                 print(startstr, state1, state2, isym, osym, weight, sep='\t')
 
+    # Save the FST
+    def save(self, fname):
+        with open(fname, 'wb') as fp:
+            pickle.dump(self, fp)
+
+    # Get an input string
+    def get_in_string(self, n=1, sep=''):
+        str = ''
+        sp = shortest_path_list(self, n)
+        i = 0
+        for path in sp:
+            for sym in path[1]:
+                str += sym
+        return str
+                
+    # Get an output string
+    def get_out_string(self, n=1, sep=''):
+        str = ''
+        sp = shortest_path_list(self, n, '')
+        i = 0
+        for path in sp:
+            for sym in path[2]:
+                str += sym
+        return str
+
+
+# Load an FST
+def load(fname):
+    newfst = None
+    
+    with open(fname, 'rb') as fp:
+        newfst = pickle.load(fp)
+
+    return newfst
 
 # Create a new FST
 def new(f=None):
     g = fst(f)
     return g
+
+# Create a linear chain FST from a list
+def linearchain(inlist, fstsym=None, exclude=[]):
+    state = 0
+    f = fst(fstsym)
+    state = 0
+    for sym in inlist:
+        if sym in exclude:
+            continue
+        f.add_arc(state, state+1, sym, None, 0)
+        state += 1
+    f.set_start(0)
+    f.set_final(state)
+    
+    return f
 
 # FST Composition
 def compose(f, g):
@@ -149,7 +199,7 @@ def shortest_path(f, n=1):
 
 # Put n shortest paths from FST f in a list
 # Return a list of tuples (input_string, output_string, weight)
-def shortest_path_list(f, n=1):
+def shortest_path_list(f, n=1, sep=" "):
     # The list of shortest paths
     sp = []
 
@@ -189,12 +239,12 @@ def shortest_path_list(f, n=1):
             # Add the input symbol
             in_sym = s.syms[arc.ilabel]
             if in_sym != '<epsilon>':
-                istr += in_sym + " "
+                istr += in_sym + sep
 
             # Add the output symbol
             out_sym = s.syms[arc.olabel]
             if out_sym != '<epsilon>':
-                ostr += out_sym + " "
+                ostr += out_sym + sep
 
             # Put the next state on the stack
             state_stack.append(arc.nextstate)
