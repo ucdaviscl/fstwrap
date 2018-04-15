@@ -1,6 +1,5 @@
 import fst
 import math
-import pickle
 import sys
 
 # A dictionary to hold a frequency distribution
