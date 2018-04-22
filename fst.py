@@ -7,63 +7,59 @@ class fst:
 
     # We can optionally initialize the fst with another fst,
     # just to get the same symbol table
-    def __init__(self, symfst=None):
+    def __init__(self, symtab=None, symfile=None):
 
-        # syms map integer IDs to string symbols,
-        # and symids map string symbols to integer IDs
-
-        # We start by adding the <epsilon> symbol
-        # with ID 0
-        self.syms = ['<epsilon>']
-        self.symids = {'<epsilon>':0}
-
-        # Keep track of states in the same way
-        self.states = []
-        self.stateids = {}
+        if symtab == None:
+            self.symtab = openfst.SymbolTable()
+            self.symtab.add_symbol('<epsilon>')
+            
+            if symfile != None:
+                self.symtab.read_text(symfile)
+        else:
+            self.symtab = symtab
+            if self.symtab.find('<epsilon>') == -1:
+                self.symtab.add_symbol('<epsilon>')
+            
+        # Keep track of states
+        self.statetab = openfst.SymbolTable()
 
         # Create a new FST using OpenFST
         self.f = openfst.Fst()
 
-        # Optionally initialize the symbol table using
-        # the symbol table from another FST
-        if symfst != None:
-            self.syms = symfst.syms
-            self.symids = symfst.symids
-
-    # Given a state name, return the ID.
     # If the name doesn't exist, create a new state
     # and return its ID.
     def get_stateid(self, state):
-        if state in self.stateids:
-            return self.stateids[state]
-        s = self.f.add_state()
-        self.stateids[state] = s
-        self.states.append(state)
-        return s
+        statestr = str(state)
+        id = self.statetab.find(statestr)
+        if id == -1:
+            id = self.statetab.add_symbol(statestr)
+            sid = self.f.add_state()
+            if id != sid:
+                print("ERROR: state ID mismatch")
+        return id
 
     # Given a symbol, return the ID.
     # If the symbol doesn't exist, add it to the symbol table
     # and return its ID.
-    def get_symid(self, symstr):
-       if symstr in self.symids:
-           return self.symids[symstr]
-       symid = len(self.syms)
-       self.symids[symstr] = symid
-       self.syms.append(symstr)
-       return symid
+    def get_symid(self, sym):
+        symstr = str(sym)
+        id = self.symtab.find(symstr)
+        if id == -1:
+            id = self.symtab.add_symbol(symstr)
+        return id
 
    # Set the start state for the FST
     def set_start(self, state):
-        if state not in self.stateids:
+        if str(state) not in self.statetab:
             return False
-        self.f.set_start(self.stateids[state])
+        self.f.set_start(self.get_stateid(state))
         return True
 
     # Make a state a final state
     def set_final(self, state):
-        if state not in self.stateids:
+        if str(state) not in self.statetab:
             return False
-        self.f.set_final(self.stateids[state])
+        self.f.set_final(self.get_stateid(state))
         return True
 
     # Add an arc to the FST
@@ -94,11 +90,11 @@ class fst:
         for stateid in self.f.states():
             # Go through all the arcs for the current state
             for arc in self.f.arcs(stateid):
-                state1 = self.states[stateid]
-                isym = self.syms[arc.ilabel]
-                osym = self.syms[arc.olabel]
+                state1 = self.statetab.find(stateid).decode()
+                isym = self.symtab.find(arc.ilabel).decode()
+                osym = self.symtab.find(arc.olabel).decode()
                 weight = float(arc.weight)
-                state2 = self.states[arc.nextstate]
+                state2 = self.statetab.find(arc.nextstate).decode()
 
                 startstr = '-'
                 if self.f.start() == stateid:
@@ -168,15 +164,14 @@ def linearchain(inlist, fstsym=None, exclude=[]):
 # FST Composition
 def compose(f, g):
     # First create a new FST with the same symbol table as f
-    c = fst(f)
+    c = fst(f.symtab)
 
     # Use OpenFST composition
     c.f = openfst.compose(f.f, g.f)
 
     # Keep track of the states
     for stateid in c.f.states():
-        c.states.append(str(stateid))
-        c.stateids[str(stateid)] = stateid
+        c.statetab.add_symbol(str(stateid))
 
     return c
 
@@ -185,15 +180,14 @@ def compose(f, g):
 def shortest_path(f, n=1):
     # create the FST that will encode the shortest paths,
     # with the same symbol table as f
-    s = fst(f)
+    s = fst(f.symtab)
 
     # OpenFST shortest path
     s.f = openfst.shortestpath(f.f, nshortest=n)
 
     # Keep track of the states
     for stateid in s.f.states():
-        s.states.append(str(stateid))
-        s.stateids[str(stateid)] = stateid
+        s.statetab.add_symbol(str(stateid))
 
     return s
 
@@ -224,6 +218,7 @@ def shortest_path_list(f, n=1, sep=" "):
         currst = state_stack.pop()
 
         # if it's a final state, print EOL
+        #print(currst) #, s.states[currst])
         if float(s.f.final(currst)) == 0:
             sp.append((weight, istr, ostr))
             istr = ""
@@ -237,12 +232,12 @@ def shortest_path_list(f, n=1, sep=" "):
             weight += float(arc.weight)
             
             # Add the input symbol
-            in_sym = s.syms[arc.ilabel]
+            in_sym = s.symtab.find(arc.ilabel).decode()
             if in_sym != '<epsilon>':
                 istr += in_sym + sep
 
             # Add the output symbol
-            out_sym = s.syms[arc.olabel]
+            out_sym = s.symtab.find(arc.olabel).decode()
             if out_sym != '<epsilon>':
                 ostr += out_sym + sep
 
@@ -254,8 +249,10 @@ def shortest_path_list(f, n=1, sep=" "):
 # A sample driver 
 def main():
 
+    sym = openfst.SymbolTable()
+    
     # Create an FST
-    f = fst()
+    f = fst(sym)
     f.add_arc('zero', 'one', 'ojeda', 'Ojeda', 3)
     f.add_arc('zero', 'one', 'ojeda', 'Prof_Ojeda', 2)
     f.add_arc('one', 'two', 'said', 'says', 1)
@@ -274,13 +271,14 @@ def main():
     print()
 
     # Create another FST
-    g = fst(f)
+    g = fst(sym)
     g.add_arc('zero', 'one', 'ojeda', None, 1)
     g.add_arc('one', 'two', 'said', None, 1)
     g.add_arc('two', 'three', 'that', None, 1)
     g.add_arc('three', 'four', 'language', None, 1)
     g.add_arc('four', 'five', 'is', None, 1)
     g.add_arc('five', 'six', 'infinite', None, 1)
+    g.add_arc('five', 'six', 'abc', None, 1)
     g.set_start('zero')
     g.set_final('six')
 
