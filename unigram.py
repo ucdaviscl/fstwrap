@@ -40,7 +40,6 @@ for word in unks:
     fd.pop(word)
 
 # Now build the FST
-state = 1
 for w in fd:
 
     # fd[w] divided by token_count is the relative frequency,
